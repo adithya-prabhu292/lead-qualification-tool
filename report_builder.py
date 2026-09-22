@@ -43,7 +43,7 @@ def _report_config(cfg: dict) -> dict:
         return cfg["report"]
     except KeyError:
         raise KeyError(
-            "config.yaml has no `report:` block - stage 3 reads its reason "
+            "config.yaml has no `report:` block - the report stage reads its reason "
             "vocabulary and output-name patterns from there"
         ) from None
 
@@ -535,7 +535,7 @@ def _build_run_diagnostics(cfg: dict, n_leads: int, stage1_meta: dict | None,
     total = int(tier_tok.get("total_tokens", 0)) + int(msg_tok.get("total_tokens", 0))
     return {
         "tiering": {
-            "stage": "1 - industry tier normalisation",
+            "stage": "industry tier normalisation",
             "batch_size_key": "llm.batch_size",
             "batch_size": cfg["llm"]["batch_size"],
             "model": cfg["llm"]["model"],
@@ -548,7 +548,7 @@ def _build_run_diagnostics(cfg: dict, n_leads: int, stage1_meta: dict | None,
             "tokens": tier_tok or None,
         },
         "messaging": {
-            "stage": "2 - outreach message generation",
+            "stage": "outreach message generation",
             "batch_size_key": "llm_messages.batch_size",
             "batch_size": cfg["llm_messages"]["batch_size"],
             "model": cfg["llm"]["model"],

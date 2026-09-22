@@ -536,7 +536,7 @@ def run_pipeline(input_csv: str | Path, cfg: dict, api_key: str | None = None,
 
     R.leads_to_dataframe(leads).to_csv(paths["scored_table"], index=False)
     paths["stage1_report"].write_text(json.dumps(
-        {"stage": "1 - scoring", "source_file": path.name,
+        {"stage": "scoring", "source_file": path.name,
          "rubric_version": cfg["meta"]["version"], "build": RB.BUILD,
          "processing_date": str(processing_date), "n_leads": len(leads),
          "decisions": counts, "tiering": s1}, indent=2, default=str),
