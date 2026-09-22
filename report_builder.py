@@ -1,7 +1,7 @@
 """
 report_builder.py - Lead Qualification Tool, report stage.
 
-Build 1.1.2. Consumes the in-memory `list[ScoredLead]` produced by scoring
+Build 1.2.0-dev. Consumes the in-memory `list[ScoredLead]` produced by scoring
 (`rubric_scorer.score_all_leads`) and mutated in place by messaging
 (`message_generator.generate_messages`), and emits the report in three
 surfaces: JSON, CSV, and a rendered console view.
@@ -28,7 +28,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Callable
 
-BUILD = "1.1.2"
+BUILD = "1.2.0-dev"
 
 
 # ===========================================================================
