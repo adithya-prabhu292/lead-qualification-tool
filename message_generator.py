@@ -382,7 +382,11 @@ def match_replies_to_leads(objects: list[dict], sent_ids: list[str], cfg: dict) 
             continue
         token = find_leaked_term(msg, cfg)
         if token:
-            rejected[lid] = "leaked_internal"
+            # The flagged term, not just the fact of a flag. A failures panel
+            # that says "leaked_internal" sends a reader back to the message
+            # to hunt for the word; one that says "leaked_internal:fit" does
+            # not. Same reason:detail shape as api_error:<detail>.
+            rejected[lid] = f"leaked_internal:{token}"
             continue
         recovered[lid] = {"message": msg, "leak_token": None}
 
