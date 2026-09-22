@@ -401,7 +401,7 @@ def make_paced_message_client(pacer: TokenPacer, log: Callable[[str], Any] = pri
 # ---------------------------------------------------------------------------
 def score_leads(df: pd.DataFrame, cfg: dict, tier_map: dict):
     """-> (leads, processing_date). Deterministic; no API call."""
-    return R.score_dataframe(df, cfg, tier_map)
+    return R.score_all_leads(df, cfg, tier_map)
 
 
 def generate_messages_for(qualified: list, cfg: dict, api_key: str | None,
@@ -463,7 +463,7 @@ def run_pipeline(input_csv: str | Path, cfg: dict, api_key: str | None = None,
         counts[l.decision] = counts.get(l.decision, 0) + 1
     log(f"  scored: n={len(leads)} | processing_date {processing_date} | {counts}")
 
-    R.to_frame(leads).to_csv(paths["scored_table"], index=False)
+    R.leads_to_dataframe(leads).to_csv(paths["scored_table"], index=False)
     paths["stage1_report"].write_text(json.dumps(
         {"stage": "1 - scoring", "source_file": path.name,
          "rubric_version": cfg["meta"]["version"], "build": RB.BUILD,

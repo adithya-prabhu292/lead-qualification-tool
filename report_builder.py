@@ -2,7 +2,7 @@
 report_builder.py - Lead Qualification Tool, report stage.
 
 Build 1.1.2. Consumes the in-memory `list[ScoredLead]` produced by scoring
-(`rubric_scorer.score_dataframe`) and mutated in place by messaging
+(`rubric_scorer.score_all_leads`) and mutated in place by messaging
 (`message_generator.generate_messages`), and emits the report in three
 surfaces: JSON, CSV, and a rendered console view.
 

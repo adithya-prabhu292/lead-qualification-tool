@@ -20,10 +20,11 @@ Revision
 --------
 1.1.1  Five optional messaging fields added to ScoredLead: message,
        message_generated, message_variant, message_fail_reason,
-       message_word_count. Additive only - no scoring function reads or writes
-       them, and to_frame() does not emit them, so the scoring path and the
-       scored CSV are unchanged byte-for-byte. A file scored without running
-       the messaging stage still produces valid records.
+       message_word_count. Additive only - no scoring function reads or
+       writes them, and leads_to_dataframe() does not emit them, so the
+       scoring path and the scored CSV are unchanged byte-for-byte. A file
+       scored without running the messaging stage still produces valid
+       records.
 """
 
 from __future__ import annotations
@@ -74,7 +75,7 @@ def is_missing(value: Any, sentinels: set[str]) -> bool:
     return False
 
 
-def clean_str(value: Any, sentinels: set[str]) -> str | None:
+def clean_text(value: Any, sentinels: set[str]) -> str | None:
     return None if is_missing(value, sentinels) else str(value).strip()
 
 
@@ -218,9 +219,10 @@ class ScoredLead:
     reasoning: str = ""
 
     # --- messaging fields --------------------------------------------------
-    # Optional and additive. Nothing in the scoring path reads or writes these,
-    # and to_frame() does not emit them, so scoring a file without running the
-    # message stage still produces valid records and an unchanged CSV.
+    # Optional and additive. Nothing in the scoring path reads or writes
+    # these, and leads_to_dataframe() does not emit them, so scoring a file
+    # without running the message stage still produces valid records and an
+    # unchanged CSV.
     message: str | None = None
     message_generated: bool = False
     message_variant: str | None = None
@@ -280,11 +282,11 @@ def score_lead(
     sentinels = set(cfg["missing_data"]["sentinel_values"])
     factors = cfg["factors"]
 
-    name = clean_str(row.get("name"), sentinels)
-    company = clean_str(row.get("company"), sentinels)
+    name = clean_text(row.get("name"), sentinels)
+    company = clean_text(row.get("company"), sentinels)
     size = clean_size(row.get("company_size"), sentinels)
-    industry = clean_str(row.get("industry"), sentinels)
-    source = clean_str(row.get("source"), sentinels)
+    industry = clean_text(row.get("industry"), sentinels)
+    source = clean_text(row.get("source"), sentinels)
     last_dt = clean_date(row.get("last_interaction_date"), sentinels)
 
     lead = ScoredLead(
@@ -376,11 +378,11 @@ def score_lead(
         # visibly sum to the fit score instead of drifting by rounding.
         lead.factor_contributions[k] = round(raw * score_w[k] / den, 2)
 
-    lead.reasoning = build_reasoning(lead, score_w)
+    lead.reasoning = build_reasoning_string(lead, score_w)
     return lead
 
 
-def build_reasoning(lead: ScoredLead, score_w: dict[str, float]) -> str:
+def build_reasoning_string(lead: ScoredLead, score_w: dict[str, float]) -> str:
     parts = []
     for k, raw in lead.factor_scores.items():
         if raw is None:
@@ -441,7 +443,7 @@ def apply_guardrails(lead: ScoredLead, cfg: dict) -> ScoredLead:
 # ---------------------------------------------------------------------------
 # batch + ranking
 # ---------------------------------------------------------------------------
-def _rank_key(lead: ScoredLead):
+def _queue_sort_key(lead: ScoredLead):
     """Full deterministic tie-break chain. Without it, two runs over the same
     file can emit different ranks and the report stops being
     reproducible."""
@@ -454,7 +456,7 @@ def _rank_key(lead: ScoredLead):
     )
 
 
-def score_dataframe(
+def score_all_leads(
     df: pd.DataFrame, cfg: dict, tier_map: dict[str, str]
 ) -> tuple[list[ScoredLead], date]:
     processing_date = resolve_processing_date(df, cfg)
@@ -469,13 +471,13 @@ def score_dataframe(
         for i, (_, row) in enumerate(df.iterrows())
     ]
 
-    for rank, lead in enumerate(sorted(leads, key=_rank_key), start=1):
+    for rank, lead in enumerate(sorted(leads, key=_queue_sort_key), start=1):
         lead.priority_rank = rank
 
     return leads, processing_date
 
 
-def to_frame(leads: list[ScoredLead]) -> pd.DataFrame:
+def leads_to_dataframe(leads: list[ScoredLead]) -> pd.DataFrame:
     rows = []
     for l in leads:
         row = {
