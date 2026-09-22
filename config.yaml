@@ -471,18 +471,6 @@ llm:
     label, same count and same spelling as the input:
     [{{"industry": "<label exactly as given>", "tier": "tier_1|tier_2|tier_3"}}]
 
-# -----------------------------------------------------------------------------
-# OUTPUT
-# -----------------------------------------------------------------------------
-output:
-  # [LOCKED] Per-factor raw scores and the reasoning trace are always persisted,
-  # so weights can be re-swept offline without spending another LLM call.
-  # Hardcoded in to_frame() and in the notebook's report writer. There is no
-  # switch, because turning it off would break the one workflow that makes
-  # re-weighting cheap.
-  report_path: "training_run_report.json"
-  table_path: "training_run_scored.csv"
-
 # =============================================================================
 # LLM - OUTREACH MESSAGE GENERATION
 # =============================================================================
