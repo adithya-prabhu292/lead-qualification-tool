@@ -547,12 +547,21 @@ def run_pipeline(input_csv: str | Path, cfg: dict, api_key: str | None = None,
     msg_report = None
     if not qualified:
         log("  no qualified leads - message generation skipped")
-    elif not api_key:
-        raise RuntimeError(
-            f"{len(qualified)} qualified leads need messages and no API key is set. "
-            f"Set {cfg['llm']['api_key_env']} in the environment and run again."
-        )
     else:
+        if not api_key:
+            # Warn, do not stop. Everything already in the cache is served, and
+            # a lead with no cache entry fails through the messaging module's
+            # own no-key error: non-retryable, so it costs no sleeps and no
+            # calls. A run that can replay a whole file without a key is worth
+            # more than a run that refuses to start.
+            #
+            # Tiering is not treated this way. It stops above, because an
+            # unclassified industry silently changes a lead's decision, and
+            # that is not a failure the report can show honestly.
+            log(f"  [warn] no API key ({cfg['llm']['api_key_env']}); serving "
+                f"messages from cache only. Any of the {len(qualified)} "
+                f"qualified leads without a cache entry will be recorded as "
+                f"failed.")
         log(f"  generating messages for n={len(qualified)} qualified leads "
             f"(batch_size {cfg['llm_messages']['batch_size']}, "
             f"temp {cfg['llm_messages']['temperature']})")
