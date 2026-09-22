@@ -174,10 +174,15 @@ def validate_leads(df: pd.DataFrame, cfg: dict, name: str = "input") -> pd.DataF
 # ---------------------------------------------------------------------------
 class TierLLMError(Exception):
     """Carries whether the failure is worth retrying. Auth, permission and
-    bad-request errors are not - retrying them just burns the budget."""
+    bad-request errors are not - retrying them just burns the budget.
 
-    def __init__(self, message, retryable):
+    `truncated` separates the one non-retryable failure that a smaller batch
+    can fix from the ones it cannot. Re-sending the same batch after a
+    truncation would truncate again; sending half of it may not."""
+
+    def __init__(self, message, retryable, truncated=False):
         self.retryable = retryable
+        self.truncated = truncated
         super().__init__(message)
 
 
@@ -222,8 +227,10 @@ def call_tiering_api(prompt: str, cfg: dict, api_key: str | None,
     pacer.charge(body.get("usage"), ceiling)
     choice = body["choices"][0]
     if choice.get("finish_reason") == "length":
-        # Fail closed: a truncated classification array cannot be trusted.
-        raise TierLLMError("response truncated: finish_reason=length", retryable=False)
+        # Fail closed: a truncated classification array cannot be trusted, so
+        # the whole reply is discarded. The caller may retry a smaller batch.
+        raise TierLLMError("response truncated: finish_reason=length",
+                           retryable=False, truncated=True)
     return {"content": choice["message"]["content"], "usage": body.get("usage") or {}}
 
 
@@ -259,6 +266,8 @@ def _classify_labels_once(labels, cfg: dict, api_key: str | None,
             result = call(prompt, cfg, api_key, pacer)
         except TierLLMError as e:
             diag["errors"].append(str(e))
+            if e.truncated:
+                diag["truncated"] = True
             if not e.retryable:
                 break
             time.sleep(llm["retry_backoff_seconds"] * attempt)
@@ -292,7 +301,8 @@ def _classify_labels_once(labels, cfg: dict, api_key: str | None,
 
 def classify_industry_batch(labels, cfg: dict, api_key: str | None,
                             pacer: TokenPacer, log: Callable[[str], Any] = print,
-                            client: Callable | None = None):
+                            client: Callable | None = None,
+                            allow_split: bool = True):
     """-> (mapping, diagnostics). Alignment is by label, never by position.
 
     Two passes. The first sends every label. The second re-sends, once, only
@@ -304,31 +314,70 @@ def classify_industry_batch(labels, cfg: dict, api_key: str | None,
     Labels still missing after the re-send are unclassified, and their leads
     go to REVIEW through the completeness rule in rubric_scorer.
 
-    Bounds. Each pass is bounded by llm.max_retries, and the second pass runs
+    Truncation. A reply with finish_reason=length is discarded whole - tiering
+    fails closed and never keeps part of a truncated array. The batch is then
+    split once into two halves, and each half goes through the same two passes.
+    A half that truncates again is NOT split further: its labels are
+    unclassified. A single label that truncates is unclassified, because there
+    is nothing left to halve.
+
+    Bounds. Each pass is bounded by llm.max_retries, and the re-send pass runs
     only when the first recovered something - a first pass that recovers
-    nothing has already spent its retries on the same labels. The worst case
-    per original batch is therefore 2 * llm.max_retries HTTP calls.
+    nothing has already spent its retries on the same labels. So one attempt
+    at a label list costs at most 2 * llm.max_retries HTTP calls, and a batch
+    that truncates and is split costs at most 3 * that, once for the truncated
+    attempt and once for each half. The split happens at most once.
     """
     call = client or call_tiering_api
     diag = {"n_in": len(labels), "attempts": 0, "errors": [], "n_out": 0,
             "n_aligned": 0, "misaligned": list(labels),
             "resends": 0, "recovered_by_resend": [],
+            "truncated": False, "splits": 0,
             "prompt_tokens": 0, "completion_tokens": 0}
 
-    recovered = _classify_labels_once(labels, cfg, api_key, pacer, log, call, diag)
+    recovered = _classify_with_resend(labels, cfg, api_key, pacer, log, call, diag)
 
-    missing = [l for l in labels if l not in recovered]
-    if recovered and missing:
-        diag["resends"] = 1
-        log(f"  tiering re-send: {len(missing)} of {len(labels)} label(s) "
-            f"missing from the reply")
-        again = _classify_labels_once(missing, cfg, api_key, pacer, log, call, diag)
-        diag["recovered_by_resend"] = [l for l in missing if l in again]
-        recovered.update(again)
+    if diag["truncated"] and not recovered and len(labels) > 1 and allow_split:
+        half = len(labels) // 2
+        diag["splits"] = 1
+        log(f"  tiering split: batch of {len(labels)} truncated, "
+            f"retrying as {half} + {len(labels) - half}")
+        for part in (labels[:half], labels[half:]):
+            # allow_split=False: a half that truncates again is not split
+            # further. Halving forever turns one bad reply into a call storm.
+            part_map, part_diag = classify_industry_batch(
+                part, cfg, api_key, pacer, log, client, allow_split=False)
+            recovered.update(part_map)
+            diag["attempts"] += part_diag["attempts"]
+            diag["errors"] += part_diag["errors"]
+            diag["n_out"] += part_diag["n_out"]
+            diag["resends"] += part_diag["resends"]
+            diag["recovered_by_resend"] += part_diag["recovered_by_resend"]
+            diag["prompt_tokens"] += part_diag["prompt_tokens"]
+            diag["completion_tokens"] += part_diag["completion_tokens"]
 
     diag["n_aligned"] = len(recovered)
     diag["misaligned"] = sorted(set(labels) - set(recovered))
     return recovered, diag
+
+
+def _classify_with_resend(labels, cfg: dict, api_key: str | None,
+                          pacer: TokenPacer, log: Callable[[str], Any],
+                          call: Callable, diag: dict) -> dict:
+    """The two passes over one label list: send all, then re-send the ones
+    that did not align. Truncation is left for the caller to act on."""
+    recovered = _classify_labels_once(labels, cfg, api_key, pacer, log, call, diag)
+
+    missing = [l for l in labels if l not in recovered]
+    if recovered and missing:
+        diag["resends"] += 1
+        log(f"  tiering re-send: {len(missing)} of {len(labels)} label(s) "
+            f"missing from the reply")
+        again = _classify_labels_once(missing, cfg, api_key, pacer, log, call, diag)
+        diag["recovered_by_resend"] += [l for l in missing if l in again]
+        recovered.update(again)
+
+    return recovered
 
 
 def tier_industries(df: pd.DataFrame, cfg: dict, api_key: str | None,
@@ -347,7 +396,7 @@ def tier_industries(df: pd.DataFrame, cfg: dict, api_key: str | None,
 
     meta = {"n_strings_total": len(unique), "n_from_cache": len(unique) - len(todo),
             "n_classified_live": 0, "batches": 0, "parse_failures": 0,
-            "missing_label_resends": 0,
+            "missing_label_resends": 0, "truncation_splits": 0,
             "unclassified": [], "batch_size_key": "llm.batch_size",
             "batch_size": llm["batch_size"],
             "tokens": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}}
@@ -365,12 +414,14 @@ def tier_industries(df: pd.DataFrame, cfg: dict, api_key: str | None,
             meta["batches"] += 1
             meta["parse_failures"] += sum(1 for e in diag["errors"] if e.startswith("parse"))
             meta["missing_label_resends"] += diag["resends"]
+            meta["truncation_splits"] += diag["splits"]
             meta["tokens"]["prompt_tokens"] += diag["prompt_tokens"]
             meta["tokens"]["completion_tokens"] += diag["completion_tokens"]
             tier_map.update(mapping)
             log(f"  tiering batch {meta['batches']}: sent={diag['n_in']} "
                 f"aligned={diag['n_aligned']} attempts={diag['attempts']}"
                 + (f" resent={diag['resends']}" if diag["resends"] else "")
+                + (f" split={diag['splits']}" if diag["splits"] else "")
                 + (f" | {diag['errors']}" if diag["errors"] else ""))
         meta["n_classified_live"] = len([s for s in todo if s in tier_map])
         meta["unclassified"] = [s for s in todo if s not in tier_map]
