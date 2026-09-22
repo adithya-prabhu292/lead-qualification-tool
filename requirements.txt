@@ -1,0 +1,14 @@
+# Lead Qualification Tool - runtime dependencies.
+#
+# Minimums, not pins. Verified locally on pandas 3.0.2 (Python 3.12) and in
+# Colab on the pandas 2.x line, which is why the pandas floor is 2.0.
+#
+#   pandas    rubric_scorer: read_csv, to_datetime, DataFrame, iterrows
+#   PyYAML    config.yaml loading
+#   requests  the tiering and messaging HTTP calls
+#
+# report_builder.py uses only the standard library.
+
+pandas>=2.0
+PyYAML>=6.0
+requests>=2.31
