@@ -239,21 +239,22 @@ def parse_tier_reply(text: str):
         return {"parse_error": str(e), "raw": cleaned[start:end + 1][:300]}
 
 
-def classify_industry_batch(labels, cfg: dict, api_key: str | None,
-                            pacer: TokenPacer, log: Callable[[str], Any] = print,
-                            client: Callable | None = None):
-    """-> (mapping, diagnostics). Retries transport and parse failures only,
-    bounded by llm.max_retries. Alignment is by label, never by position."""
-    call = client or call_tiering_api
+def _classify_labels_once(labels, cfg: dict, api_key: str | None,
+                          pacer: TokenPacer, log: Callable[[str], Any],
+                          call: Callable, diag: dict) -> dict:
+    """One label list through the retry-bounded path. -> the labels recovered.
+
+    Bounded by llm.max_retries, which covers transport failures, 429, 5xx,
+    parse failures and replies where zero labels aligned. Auth, permission
+    and 400 errors are not retried. Accumulates into the caller's `diag`, so
+    a batch's totals span every pass made for it.
+    """
     llm = cfg["llm"]
     valid_tiers = set(cfg["factors"]["industry"]["tier_scores"])
     prompt = llm["tier_prompt"].format(labels="\n".join(f"- {l}" for l in labels))
-    diag = {"n_in": len(labels), "attempts": 0, "errors": [], "n_out": 0,
-            "n_aligned": 0, "misaligned": list(labels),
-            "prompt_tokens": 0, "completion_tokens": 0}
 
     for attempt in range(1, llm["max_retries"] + 1):
-        diag["attempts"] = attempt
+        diag["attempts"] += 1
         try:
             result = call(prompt, cfg, api_key, pacer)
         except TierLLMError as e:
@@ -273,6 +274,7 @@ def classify_industry_batch(labels, cfg: dict, api_key: str | None,
             time.sleep(llm["retry_backoff_seconds"] * attempt)
             continue
 
+        diag["n_out"] += len(parsed)
         mapping = {
             str(e.get("industry", "")).strip(): str(e.get("tier", "")).strip()
             for e in parsed
@@ -280,14 +282,53 @@ def classify_industry_batch(labels, cfg: dict, api_key: str | None,
             and str(e.get("tier", "")).strip() in valid_tiers
         }
         recovered = {l: mapping[l] for l in labels if l in mapping}
-        diag.update(n_out=len(parsed), n_aligned=len(recovered),
-                    misaligned=sorted(set(labels) - set(recovered)))
         if recovered:
-            return recovered, diag
+            return recovered
         diag["errors"].append("zero labels aligned")
         time.sleep(llm["retry_backoff_seconds"] * attempt)
 
-    return {}, diag
+    return {}
+
+
+def classify_industry_batch(labels, cfg: dict, api_key: str | None,
+                            pacer: TokenPacer, log: Callable[[str], Any] = print,
+                            client: Callable | None = None):
+    """-> (mapping, diagnostics). Alignment is by label, never by position.
+
+    Two passes. The first sends every label. The second re-sends, once, only
+    the labels that did not come back aligned: absent from the reply, spelt
+    differently, or carrying a tier outside tier_scores. Without it a label
+    the model simply skipped is never asked about again, and the lead behind
+    it is scored with its industry silently dropped.
+
+    Labels still missing after the re-send are unclassified, and their leads
+    go to REVIEW through the completeness rule in rubric_scorer.
+
+    Bounds. Each pass is bounded by llm.max_retries, and the second pass runs
+    only when the first recovered something - a first pass that recovers
+    nothing has already spent its retries on the same labels. The worst case
+    per original batch is therefore 2 * llm.max_retries HTTP calls.
+    """
+    call = client or call_tiering_api
+    diag = {"n_in": len(labels), "attempts": 0, "errors": [], "n_out": 0,
+            "n_aligned": 0, "misaligned": list(labels),
+            "resends": 0, "recovered_by_resend": [],
+            "prompt_tokens": 0, "completion_tokens": 0}
+
+    recovered = _classify_labels_once(labels, cfg, api_key, pacer, log, call, diag)
+
+    missing = [l for l in labels if l not in recovered]
+    if recovered and missing:
+        diag["resends"] = 1
+        log(f"  tiering re-send: {len(missing)} of {len(labels)} label(s) "
+            f"missing from the reply")
+        again = _classify_labels_once(missing, cfg, api_key, pacer, log, call, diag)
+        diag["recovered_by_resend"] = [l for l in missing if l in again]
+        recovered.update(again)
+
+    diag["n_aligned"] = len(recovered)
+    diag["misaligned"] = sorted(set(labels) - set(recovered))
+    return recovered, diag
 
 
 def tier_industries(df: pd.DataFrame, cfg: dict, api_key: str | None,
@@ -306,6 +347,7 @@ def tier_industries(df: pd.DataFrame, cfg: dict, api_key: str | None,
 
     meta = {"n_strings_total": len(unique), "n_from_cache": len(unique) - len(todo),
             "n_classified_live": 0, "batches": 0, "parse_failures": 0,
+            "missing_label_resends": 0,
             "unclassified": [], "batch_size_key": "llm.batch_size",
             "batch_size": llm["batch_size"],
             "tokens": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}}
@@ -322,11 +364,13 @@ def tier_industries(df: pd.DataFrame, cfg: dict, api_key: str | None,
                 todo[i:i + bs], cfg, api_key, pacer, log, client)
             meta["batches"] += 1
             meta["parse_failures"] += sum(1 for e in diag["errors"] if e.startswith("parse"))
+            meta["missing_label_resends"] += diag["resends"]
             meta["tokens"]["prompt_tokens"] += diag["prompt_tokens"]
             meta["tokens"]["completion_tokens"] += diag["completion_tokens"]
             tier_map.update(mapping)
             log(f"  tiering batch {meta['batches']}: sent={diag['n_in']} "
                 f"aligned={diag['n_aligned']} attempts={diag['attempts']}"
+                + (f" resent={diag['resends']}" if diag["resends"] else "")
                 + (f" | {diag['errors']}" if diag["errors"] else ""))
         meta["n_classified_live"] = len([s for s in todo if s in tier_map])
         meta["unclassified"] = [s for s in todo if s not in tier_map]
