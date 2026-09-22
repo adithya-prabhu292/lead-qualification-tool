@@ -437,6 +437,36 @@ llm:
   # 1010) before the request reaches the API.
   request_timeout_seconds: 60
 
+  # [LOCKED] The industry tiering prompt, carried verbatim from the training
+  # run so tiers stay comparable across every file this tool has scored. It
+  # lived in the notebook until build 1.2.0-dev; it is business text and it
+  # belongs here with the rest. {labels} is filled with the batch's labels,
+  # and the doubled braces are literal - the text is applied with .format().
+  # Changing it invalidates the tier cache: the cache key is the industry
+  # string alone and carries no record of the prompt that produced the tier.
+  tier_prompt: |-
+    You classify industry labels for a B2B SaaS vendor.
+
+    The vendor sells a CRM/ERP suite for customer onboarding, engagement and
+    post-sale support. It fits a prospect well when that prospect's own customer
+    operations are digital and generate structured customer records. It fits
+    poorly when the prospect's operations are dominated by physical assets and
+    movement.
+
+    Assign each label exactly one tier:
+      tier_1 - digital customer interactions are core to how the business runs
+      tier_2 - mixed: meaningful digital customer operations alongside physical
+               or offline delivery
+      tier_3 - physical assets, movement or field operations dominate; few
+               structured digital customer records
+
+    Labels:
+    {labels}
+
+    Return ONLY a JSON array, no prose and no markdown fences. One object per
+    label, same count and same spelling as the input:
+    [{{"industry": "<label exactly as given>", "tier": "tier_1|tier_2|tier_3"}}]
+
 # -----------------------------------------------------------------------------
 # OUTPUT
 # -----------------------------------------------------------------------------

@@ -169,33 +169,9 @@ def validate_leads(df: pd.DataFrame, cfg: dict, name: str = "input") -> pd.DataF
 # discarded rather than half-trusted. A string the model declines to tier is
 # treated as missing, never defaulted to a middle tier.
 #
-# [NOTE] TIER_PROMPT is business text living outside config. This is the one
-# documented place the "business text lives in config" rule does not hold;
-# it is carried verbatim from the training run so the tiers stay comparable.
+# The prompt itself is business text, and since build 1.2.0-dev it lives
+# in config as llm.tier_prompt with the rest of the business text.
 # ---------------------------------------------------------------------------
-TIER_PROMPT = """You classify industry labels for a B2B SaaS vendor.
-
-The vendor sells a CRM/ERP suite for customer onboarding, engagement and
-post-sale support. It fits a prospect well when that prospect's own customer
-operations are digital and generate structured customer records. It fits
-poorly when the prospect's operations are dominated by physical assets and
-movement.
-
-Assign each label exactly one tier:
-  tier_1 - digital customer interactions are core to how the business runs
-  tier_2 - mixed: meaningful digital customer operations alongside physical
-           or offline delivery
-  tier_3 - physical assets, movement or field operations dominate; few
-           structured digital customer records
-
-Labels:
-{labels}
-
-Return ONLY a JSON array, no prose and no markdown fences. One object per
-label, same count and same spelling as the input:
-[{{"industry": "<label exactly as given>", "tier": "tier_1|tier_2|tier_3"}}]"""
-
-
 class TierLLMError(Exception):
     """Carries whether the failure is worth retrying. Auth, permission and
     bad-request errors are not - retrying them just burns the budget."""
@@ -271,7 +247,7 @@ def classify_industry_batch(labels, cfg: dict, api_key: str | None,
     call = client or call_tiering_api
     llm = cfg["llm"]
     valid_tiers = set(cfg["factors"]["industry"]["tier_scores"])
-    prompt = TIER_PROMPT.format(labels="\n".join(f"- {l}" for l in labels))
+    prompt = llm["tier_prompt"].format(labels="\n".join(f"- {l}" for l in labels))
     diag = {"n_in": len(labels), "attempts": 0, "errors": [], "n_out": 0,
             "n_aligned": 0, "misaligned": list(labels),
             "prompt_tokens": 0, "completion_tokens": 0}
