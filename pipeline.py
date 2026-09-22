@@ -445,8 +445,8 @@ def run_pipeline(input_csv: str | Path, cfg: dict, api_key: str | None = None,
     if tier_cache_path is None:
         tier_cache_path = cfg["factors"]["industry"]["normalisation"]["cache_path"]
 
-    stem = RB.derive_stem(path, cfg)
-    paths = RB.output_paths(cfg, stem, out_dir)
+    stem = RB.derive_output_stem(path, cfg)
+    paths = RB.resolve_output_paths(cfg, stem, out_dir)
     t0 = time.time()
 
     log(f"── {path.name} ─────────────────────────────────────────")

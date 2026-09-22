@@ -38,7 +38,7 @@ BUILD = "1.1.2"
 # rather than restating them. The rubric is frozen; this module must not
 # become a second place where its numbers live.
 # ===========================================================================
-def _rcfg(cfg: dict) -> dict:
+def _report_config(cfg: dict) -> dict:
     try:
         return cfg["report"]
     except KeyError:
@@ -146,7 +146,7 @@ def _shortfall(factor: str, raw: float | None, cfg: dict) -> float:
 # ===========================================================================
 # outcome reasons
 # ===========================================================================
-def _fmt_context(lead, cfg: dict) -> dict:
+def _reason_template_values(lead, cfg: dict) -> dict:
     """Values the detail templates in config may interpolate. Anything a
     template can name has to appear here, formatted the way it should read."""
     p = int(cfg["runtime"].get("score_precision", 1))
@@ -183,7 +183,7 @@ def _reason_record(code: str, lead, cfg: dict, shortfall: float | None) -> dict:
     A code with no entry in reason_lookup is a bug in the derivation, not a
     new category - it is surfaced in the record rather than silently dropped.
     """
-    entry = _rcfg(cfg)["reason_lookup"].get(code)
+    entry = _report_config(cfg)["reason_lookup"].get(code)
     if entry is None:
         return {
             "code": code,
@@ -192,7 +192,7 @@ def _reason_record(code: str, lead, cfg: dict, shortfall: float | None) -> dict:
             "shortfall": shortfall or 0.0,
         }
     try:
-        detail = str(entry.get("detail", "")).format(**_fmt_context(lead, cfg))
+        detail = str(entry.get("detail", "")).format(**_reason_template_values(lead, cfg))
     except (KeyError, ValueError, IndexError) as e:
         detail = f"[detail template error for {code}: {type(e).__name__} {e}]"
     return {
@@ -203,7 +203,7 @@ def _reason_record(code: str, lead, cfg: dict, shortfall: float | None) -> dict:
     }
 
 
-def classify_outcome(lead, cfg: dict) -> list[dict]:
+def derive_outcome_reasons(lead, cfg: dict) -> list[dict]:
     """Pure. Why this lead landed where it did, as reason records drawn from
     the closed vocabulary in `report.reason_lookup`. Never free text.
 
@@ -216,7 +216,7 @@ def classify_outcome(lead, cfg: dict) -> list[dict]:
              default unreachable.
     QUALIFIED carries none.
     """
-    R = _rcfg(cfg)
+    R = _report_config(cfg)
     F = cfg["factors"]
 
     if lead.decision == "REVIEW":
@@ -339,7 +339,7 @@ def build_summary(leads: list, cfg: dict, source_file: str = "",
     # not emit.
     n_scored = sum(1 for l in leads if l.fit_score is not None)
 
-    decisions = {d: 0 for d in _rcfg(cfg)["display"]["decision_order"]}
+    decisions = {d: 0 for d in _report_config(cfg)["display"]["decision_order"]}
     for l in leads:
         decisions[l.decision] = decisions.get(l.decision, 0) + 1
 
@@ -353,10 +353,10 @@ def build_summary(leads: list, cfg: dict, source_file: str = "",
     rev_pct = round(100 * decisions.get("REVIEW", 0) / n_total, 1) if n_total else None
 
     # reason frequencies, counted over the leads that can carry each vocabulary
-    rej_codes = set(_rcfg(cfg)["rejection_factor_codes"].values()) | {
-        _rcfg(cfg)["rejection_default_code"]
+    rej_codes = set(_report_config(cfg)["rejection_factor_codes"].values()) | {
+        _report_config(cfg)["rejection_default_code"]
     }
-    rev_codes = set(_rcfg(cfg)["guardrail_reason_codes"].values())
+    rev_codes = set(_report_config(cfg)["guardrail_reason_codes"].values())
 
     def _freq(codes: set[str], decision: str) -> list[dict]:
         pool = [r for r in records if r["decision"] == decision]
@@ -366,7 +366,7 @@ def build_summary(leads: list, cfg: dict, source_file: str = "",
             for c in rec["outcome_reason_codes"]:
                 if c in codes:
                     counts[c] = counts.get(c, 0) + 1
-        lookup = _rcfg(cfg)["reason_lookup"]
+        lookup = _report_config(cfg)["reason_lookup"]
         out = [
             {
                 "code": c,
@@ -431,7 +431,7 @@ def build_summary(leads: list, cfg: dict, source_file: str = "",
 # ===========================================================================
 # sample messages
 # ===========================================================================
-def select_samples(leads: list, cfg: dict) -> tuple[list[dict], str | None]:
+def select_sample_messages(leads: list, cfg: dict) -> tuple[list[dict], str | None]:
     """Deterministic, so repeated runs select the same samples.
 
       1. highest-ranked generated message from each variant present
@@ -441,7 +441,7 @@ def select_samples(leads: list, cfg: dict) -> tuple[list[dict], str | None]:
     Drawn only from leads where message_generated is True, which by
     construction means QUALIFIED with a successful generation.
     """
-    R = _rcfg(cfg)["samples"]
+    R = _report_config(cfg)["samples"]
     cap = int(R["max"])
     floor = int(R["min"])
     guaranteed = R.get("guarantee_two_of")
@@ -502,14 +502,14 @@ def select_samples(leads: list, cfg: dict) -> tuple[list[dict], str | None]:
 # ===========================================================================
 # queue
 # ===========================================================================
-def build_queue(leads: list, cfg: dict, records: list[dict]) -> list[dict]:
+def group_queue_by_decision(leads: list, cfg: dict, records: list[dict]) -> list[dict]:
     """Decision-grouped, rank-ordered. QUALIFIED first: successful records
     lead. The grouping is what makes the rank interleave in leads[] legible -
     decision comes from fit_score, queue position from priority_score, and
     the two genuinely cross over."""
     by_id = {r["lead_id"]: r for r in records}
     groups = []
-    for decision in _rcfg(cfg)["display"]["decision_order"]:
+    for decision in _report_config(cfg)["display"]["decision_order"]:
         members = [
             by_id[l.lead_id] for l in leads
             if l.decision == decision and l.lead_id in by_id
@@ -522,7 +522,7 @@ def build_queue(leads: list, cfg: dict, records: list[dict]) -> list[dict]:
 # ===========================================================================
 # run diagnostics
 # ===========================================================================
-def _diagnostics(cfg: dict, n_leads: int, stage1_meta: dict | None,
+def _build_run_diagnostics(cfg: dict, n_leads: int, stage1_meta: dict | None,
                  stage2_report: dict | None) -> dict:
     """Every LLM figure names its stage and its batch_size. Two batch_size
     keys exist with different meanings - llm.batch_size counts unique
@@ -583,19 +583,19 @@ def build_report(leads: list, cfg: dict, source_file: str = "",
     for w in warnings:
         log(f"[warn] {w}")
 
-    records = [_lead_record(l, cfg, classify_outcome(l, cfg)) for l in leads]
+    records = [_lead_record(l, cfg, derive_outcome_reasons(l, cfg)) for l in leads]
     records.sort(key=lambda r: (r["priority_rank"] if r["priority_rank"] is not None else 10 ** 6))
 
-    samples, note = select_samples(leads, cfg)
+    samples, note = select_sample_messages(leads, cfg)
     processing_date = (stage1_meta or {}).get("processing_date")
 
     report = {
         "summary": build_summary(leads, cfg, source_file, processing_date, records),
-        "queue": build_queue(leads, cfg, records),
+        "queue": group_queue_by_decision(leads, cfg, records),
         "leads": records,
         "sample_messages": samples,
         "sample_note": note,
-        "run_diagnostics": _diagnostics(cfg, len(leads), stage1_meta, stage2_report),
+        "run_diagnostics": _build_run_diagnostics(cfg, len(leads), stage1_meta, stage2_report),
         "build_warnings": warnings,
     }
     return report
@@ -604,23 +604,23 @@ def build_report(leads: list, cfg: dict, source_file: str = "",
 # ===========================================================================
 # write
 # ===========================================================================
-def derive_stem(input_csv: str | Path, cfg: dict) -> str:
+def derive_output_stem(input_csv: str | Path, cfg: dict) -> str:
     """Every output name derives from the input stem, so no run can overwrite
     another run's record and a new CSV gets a fresh message cache with no
     clearing step and no flag."""
     stem = Path(str(input_csv)).stem
-    prefix = _rcfg(cfg)["naming"].get("strip_prefix") or ""
+    prefix = _report_config(cfg)["naming"].get("strip_prefix") or ""
     if prefix and stem.startswith(prefix):
         stem = stem[len(prefix):]
     return stem or "run"
 
 
-def output_paths(cfg: dict, stem: str, workdir: str | Path = ".") -> dict[str, Path]:
+def resolve_output_paths(cfg: dict, stem: str, workdir: str | Path = ".") -> dict[str, Path]:
     """Every path this pipeline writes, resolved from config patterns."""
     wd = Path(workdir)
     return {
         key: wd / str(pattern).format(stem=stem)
-        for key, pattern in _rcfg(cfg)["naming"].items()
+        for key, pattern in _report_config(cfg)["naming"].items()
         if key != "strip_prefix"
     }
 
@@ -628,14 +628,14 @@ def output_paths(cfg: dict, stem: str, workdir: str | Path = ".") -> dict[str, P
 def write_report(report: dict, cfg: dict, stem: str,
                  workdir: str | Path = ".") -> list[str]:
     """Writes the JSON deliverable and the flat CSV. Returns paths written."""
-    paths = output_paths(cfg, stem, workdir)
+    paths = resolve_output_paths(cfg, stem, workdir)
     written: list[str] = []
 
     jp = paths["output_json"]
     jp.write_text(json.dumps(report, indent=2, default=str))
     written.append(str(jp))
 
-    columns = list(_rcfg(cfg)["csv_columns"])
+    columns = list(_report_config(cfg)["csv_columns"])
     cp = paths["output_csv"]
     # utf-8-sig, not utf-8. Messages carry em dashes and curly apostrophes;
     # without a BOM Excel reads the file as CP-1252 and renders them as
