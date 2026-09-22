@@ -17,7 +17,7 @@
 # =============================================================================
 
 meta:
-  version: "1.1-frozen-on-training"
+  version: "1.2-frozen-on-training"
   rubric_revision: "2026-09-12"
 
   # Revision 1.1 (2026-09-12) - recency changed from flat bands to piecewise-
@@ -38,6 +38,7 @@ meta:
   revision_history:
     - "1.0 - weights, blend, cutoff 7.0, margin 0.25 frozen on training"
     - "1.1 - recency changed to piecewise-linear interpolation, re-frozen"
+    - "1.2 - present-but-unscoreable values route to REVIEW; weights, bands and cutoff unchanged"
   held_out: ["leads_testing.csv", "leads_full_scale_100.csv"]
   description: >
     Four-factor weighted-average rubric for a mid-market B2B SaaS
@@ -93,10 +94,13 @@ missing_data:
   # switch it, because there is no alternative implemented - a key that reads
   # like a control but changes nothing is worse than no key at all.
 
-  # [LOCKED] Any lead with at least one missing or sentinel value in any of
-  # the six columns is routed to human review regardless of what it scored.
-  # That rule is the `incomplete_record` guardrail below - toggle it there,
-  # not here.
+  # [LOCKED] Any lead with at least one unusable value in any of the six
+  # columns is routed to human review regardless of what it scored. Unusable
+  # means null or sentinel, and since rubric 1.2 also means present but
+  # unreadable: a source outside the class lookup, an industry the tiering
+  # call did not classify, a size that is not a readable headcount, a date
+  # that will not parse. That rule is the `incomplete_record` guardrail
+  # below - toggle it there, not here.
 
   # Columns checked for the review flag above.
   completeness_fields:
@@ -398,7 +402,7 @@ guardrails:
   # -- review rules, evaluated first ------------------------------------------
   - id: no_scoreable_factors     # all four factors missing -> REVIEW
     enabled: true
-  - id: incomplete_record        # any field null or sentinel -> REVIEW
+  - id: incomplete_record        # any field null, sentinel or unreadable -> REVIEW
     enabled: true
   - id: borderline_score         # fit within review_margin of cutoff -> REVIEW
     enabled: true                # active since 2026-09-12, cutoff 7.0 / 0.25
@@ -787,7 +791,8 @@ report:
   # default is live and fires on 2 of the 13 rejected training leads.
   #
   # [NOTE] A lead is never REJECTED for missing data. incomplete_record forces
-  # any lead with a null or sentinel field to REVIEW, so the missing-data
+  # any lead with a null, sentinel or unreadable field to REVIEW, so the
+  # missing-data
   # one-liner belongs to the REVIEW vocabulary (V1_INCOMPLETE), not the
   # rejection vocabulary. Both live in this one table.
   reason_lookup:

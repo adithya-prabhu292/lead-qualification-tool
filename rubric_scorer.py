@@ -272,6 +272,18 @@ def resolve_processing_date(df: pd.DataFrame, cfg: dict) -> date:
     return parsed.max().date()
 
 
+# Scoring fields, and the factor each one feeds. A value that is present but
+# whose factor could not be scored is as unusable as a blank one, so score_lead
+# flags both through missing_fields. `name` and `company` are not here: they
+# feed no factor, and are flagged only when blank.
+UNSCOREABLE_FIELDS = {
+    "source": "source",
+    "industry": "industry",
+    "company_size": "company_size",
+    "last_interaction_date": "recency",
+}
+
+
 def score_lead(
     row: pd.Series,
     lead_id: str,
@@ -299,12 +311,11 @@ def score_lead(
         last_interaction_date=last_dt.isoformat() if last_dt else None,
     )
 
-    # --- completeness (drives the review guardrail) ------------------------
+    # --- completeness, pass 1: blank and placeholder values ----------------
+    # Pass 2 is below, once the factor scores exist. completeness is computed
+    # after both, so it counts fields that were usable, not merely present.
     fields = cfg["missing_data"]["completeness_fields"]
-    lead.missing_fields = [
-        c for c in fields if is_missing(row.get(c), sentinels)
-    ]
-    lead.completeness = 1.0 - (len(lead.missing_fields) / len(fields))
+    absent = [c for c in fields if is_missing(row.get(c), sentinels)]
 
     # --- per-factor raw scores --------------------------------------------
     s_src, d_src = score_source(source, factors["source"])
@@ -325,6 +336,21 @@ def score_lead(
         "company_size": d_siz,
         "recency": d_rec,
     }
+
+    # --- completeness, pass 2: present, but nothing could be scored --------
+    # An unrecognised source, an unclassified industry, a size that is not a
+    # readable headcount, a date that will not parse. Each drops its factor,
+    # and without this the lead is decided on the factors that happened to
+    # survive, with nothing recorded to say one was dropped. Flagging it here
+    # routes the lead to a human through the incomplete_record guardrail,
+    # which is what the V1_INCOMPLETE reason text has always claimed.
+    unreadable = [
+        field for field, factor in UNSCOREABLE_FIELDS.items()
+        if field not in absent and lead.factor_scores[factor] is None
+    ]
+    flagged = set(absent) | set(unreadable)
+    lead.missing_fields = [c for c in fields if c in flagged]
+    lead.completeness = 1.0 - (len(lead.missing_fields) / len(fields))
 
     score_w = {k: float(v["score_weight"]) for k, v in factors.items()}
     urg_w = {k: float(v["urgency_weight"]) for k, v in factors.items()}
