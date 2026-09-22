@@ -370,7 +370,7 @@ def tier_industries(df: pd.DataFrame, cfg: dict, api_key: str | None,
 # ---------------------------------------------------------------------------
 # Messaging-stage LLM boundary - the paced message client
 #
-# Wraps MG.call_llm_messages without editing the module. On a 429 it charges
+# Wraps MG.call_message_api without editing the module. On a 429 it charges
 # the ceiling, waits out the window, then re-raises so the module's own
 # transport counter still bounds the retry loop at 3 attempts.
 # ---------------------------------------------------------------------------
@@ -381,7 +381,7 @@ def make_paced_message_client(pacer: TokenPacer, log: Callable[[str], Any] = pri
         ceiling = int(cfg["llm_messages"]["max_tokens"]) + 1000
         pacer.gate(ceiling, log)
         try:
-            result = MG.call_llm_messages(prompt, cfg, api_key)
+            result = MG.call_message_api(prompt, cfg, api_key)
         except MG.MessageLLMError as e:
             if "429" in str(e):
                 pacer.charge(None, ceiling)

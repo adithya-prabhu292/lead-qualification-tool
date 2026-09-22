@@ -12,7 +12,7 @@ Relationship to rubric_scorer.py
 `call_llm()` and `extract_json_array()` are NOT reused and NOT modified.
 Tiering must fail closed on truncation; this stage must salvage from it.
 The two behaviours cannot live in one function, so this module has its own
-client (`call_llm_messages`) and its own parser (`extract_json_objects`).
+client (`call_message_api`) and its own parser (`parse_message_reply`).
 
 Pipeline per run:
     assert lead_id uniqueness
@@ -20,7 +20,7 @@ Pipeline per run:
     -> build 5-field payloads
     -> cache lookup, split hits from misses
     -> group misses by variant, chunk at batch_size
-    -> per batch: attempt 1 -> salvage -> reconcile
+    -> per batch: attempt 1 -> salvage -> match_replies_to_leads
                   -> content retry with ONLY the missing leads
                   -> write cache -> flag the remainder
     -> per-lead fields + batch diagnostics + measured rates
@@ -74,7 +74,7 @@ class MessageLLMError(Exception):
 # ---------------------------------------------------------------------------
 # client
 # ---------------------------------------------------------------------------
-def call_llm_messages(prompt: str, cfg: dict, api_key: str | None = None) -> dict:
+def call_message_api(prompt: str, cfg: dict, api_key: str | None = None) -> dict:
     """Returns {"content", "finish_reason", "usage", "latency_s"}.
 
     Differs from rubric_scorer's call_llm() in exactly one behaviour: on
@@ -143,7 +143,7 @@ def call_llm_messages(prompt: str, cfg: dict, api_key: str | None = None) -> dic
 # ---------------------------------------------------------------------------
 # parser
 # ---------------------------------------------------------------------------
-def extract_json_objects(text: str) -> tuple[list[dict], dict]:
+def parse_message_reply(text: str) -> tuple[list[dict], dict]:
     """Scan a possibly-truncated JSON array and return every COMPLETE object.
     Never raises.
 
@@ -208,7 +208,7 @@ def extract_json_objects(text: str) -> tuple[list[dict], dict]:
     return objects, diag
 
 
-def leaked_internal(message: str, cfg: dict | None = None) -> str | None:
+def find_leaked_term(message: str, cfg: dict | None = None) -> str | None:
     """Return the offending token, or None. Code-layer, not an injection
     defence — see the note on LEAK_WORDS."""
     words = LEAK_WORDS
@@ -245,7 +245,7 @@ def select_variant(lead, cfg: dict) -> str:
     return "v1_value"
 
 
-def build_payload(lead) -> dict:
+def build_message_payload(lead) -> dict:
     """Five fields, nothing else. No scoring artefact reaches the model."""
     return {
         "lead_id": lead.lead_id,
@@ -256,7 +256,7 @@ def build_payload(lead) -> dict:
     }
 
 
-def cache_key(payload: dict, variant: str) -> str:
+def message_cache_key(payload: dict, variant: str) -> str:
     """Content hash, never lead_id. lead_id is positional — the same id means
     different people across differently ordered or filtered files, and keying
     a cache on it is exactly how a repeated run hands one lead another lead's
@@ -271,7 +271,7 @@ def cache_key(payload: dict, variant: str) -> str:
     ).hexdigest()
 
 
-def build_prompt(variant: str, payloads: list[dict], cfg: dict) -> str:
+def build_message_prompt(variant: str, payloads: list[dict], cfg: dict) -> str:
     """org_profile + variant shape + shared rules + payload. All text from
     config; this function only concatenates."""
     m = cfg["llm_messages"]
@@ -286,7 +286,7 @@ def build_prompt(variant: str, payloads: list[dict], cfg: dict) -> str:
 # ---------------------------------------------------------------------------
 # cache
 # ---------------------------------------------------------------------------
-def load_cache(path: Path) -> dict:
+def load_message_cache(path: Path) -> dict:
     path = Path(path)
     if not path.exists():
         return {}
@@ -296,7 +296,7 @@ def load_cache(path: Path) -> dict:
         raise ValueError(f"message cache at {path} is not valid JSON: {e}") from None
 
 
-def save_cache(cache: dict, path: Path) -> None:
+def save_message_cache(cache: dict, path: Path) -> None:
     Path(path).write_text(
         json.dumps(cache, indent=2, sort_keys=True, ensure_ascii=False),
         encoding="utf-8",
@@ -352,7 +352,7 @@ def _call_with_transport_retry(prompt, cfg, api_key, client, log):
 # ---------------------------------------------------------------------------
 # reconciliation
 # ---------------------------------------------------------------------------
-def reconcile(objects: list[dict], sent_ids: list[str], cfg: dict) -> dict:
+def match_replies_to_leads(objects: list[dict], sent_ids: list[str], cfg: dict) -> dict:
     """Alignment by lead_id, never by position."""
     sent = list(sent_ids)
     sent_set = set(sent)
@@ -380,7 +380,7 @@ def reconcile(objects: list[dict], sent_ids: list[str], cfg: dict) -> dict:
         if not msg:
             rejected[lid] = "empty_message"
             continue
-        token = leaked_internal(msg, cfg)
+        token = find_leaked_term(msg, cfg)
         if token:
             rejected[lid] = "leaked_internal"
             continue
@@ -418,7 +418,7 @@ def generate_messages(
     pacer) or replaced by a stub that needs no API key.
     """
     m = cfg["llm_messages"]
-    client = client or call_llm_messages
+    client = client or call_message_api
     cache_path = Path(cache_path or m["cache_path"])
     batch_size = int(m["batch_size"])
     content_retries = int(m["content_retries"])
@@ -434,12 +434,13 @@ def generate_messages(
         init_message_fields(lead)
         lead.message_variant = select_variant(lead, cfg)
 
-    payloads = {l.lead_id: build_payload(l) for l in leads}
-    keys = {l.lead_id: cache_key(payloads[l.lead_id], l.message_variant) for l in leads}
+    payloads = {l.lead_id: build_message_payload(l) for l in leads}
+    keys = {l.lead_id: message_cache_key(payloads[l.lead_id], l.message_variant)
+            for l in leads}
     by_id = {l.lead_id: l for l in leads}
 
     # --- cache lookup -------------------------------------------------------
-    cache = load_cache(cache_path)
+    cache = load_message_cache(cache_path)
     cached_ids: list[str] = []
     drift_warnings: list[dict] = []
     misses: list = []
@@ -496,7 +497,7 @@ def generate_messages(
                 if not outstanding:
                     break
                 send = [payloads[i] for i in outstanding]
-                prompt = build_prompt(variant, send, cfg)
+                prompt = build_message_prompt(variant, send, cfg)
 
                 result, t_attempts, t_errors, err_body = _call_with_transport_retry(
                     prompt, cfg, api_key, client, log
@@ -525,7 +526,7 @@ def generate_messages(
                         log(f"        {e[:200]}")
                     break
 
-                objects, pdiag = extract_json_objects(result["content"])
+                objects, pdiag = parse_message_reply(result["content"])
                 usage = result.get("usage") or {}
                 rec.update(
                     n_objects_returned=pdiag["n_objects"],
@@ -550,7 +551,7 @@ def generate_messages(
                         f"raw[:200]={result['content'][:200]!r}")
                     continue
 
-                rc = reconcile(objects, outstanding, cfg)
+                rc = match_replies_to_leads(objects, outstanding, cfg)
                 now = _now()
                 for lid, payload_rec in rc["recovered"].items():
                     lead = by_id[lid]
@@ -616,7 +617,7 @@ def generate_messages(
                     break
 
             # cache is written after every batch, not once at the end
-            save_cache(cache, cache_path)
+            save_message_cache(cache, cache_path)
 
             still_missing = [l.lead_id for l in chunk if not l.message_generated]
             n_ok = len(chunk) - len(still_missing)
@@ -681,14 +682,14 @@ def generate_messages(
             for l in sorted(leads, key=lambda x: (x.priority_rank or 10 ** 6))
         ],
     }
-    report["rates"] = compute_rates(leads, report)
+    report["rates"] = compute_message_rates(leads, report)
     return report
 
 
 # ---------------------------------------------------------------------------
 # rates — every rate carries n= and a stated denominator
 # ---------------------------------------------------------------------------
-def compute_rates(leads: list, report: dict) -> dict:
+def compute_message_rates(leads: list, report: dict) -> dict:
     lo, hi = report["target_words"]
     cached = set(report["cached_ids"])
     sent = [l for l in leads if l.lead_id not in cached]
