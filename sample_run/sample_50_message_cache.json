@@ -208,17 +208,6 @@
     "variant": "v1_value",
     "word_count": 59
   },
-  "db230a13da5c927f43f1a7a7f6f17034741c3b231f09d7f9c7e2e64afcb6fcd1": {
-    "company": "Bluecrest Systems",
-    "generated_at": "2026-09-14T20:42:48Z",
-    "lead_id": "L020",
-    "message": "Hi Mira, thanks for the sales call. Since your team runs customer‑ops at Bluecrest Systems, juggling onboarding and support tickets across multiple tools often creates data silos. Our CRM/ERP suite sits between your record system and product, unifying customer records and automating engagement and post‑sale support. Would you like to explore how it could simplify your workflow?",
-    "model": "openai/gpt-oss-120b",
-    "source_file": "leads_sample_50.csv",
-    "temperature": 0.7,
-    "variant": "v3_generic",
-    "word_count": 57
-  },
   "ee984833ecfc130f0890c9856a0de1dcead4478655b2406f1485a17e47d91501": {
     "company": "Inglewood Company",
     "generated_at": "2026-09-14T20:41:44Z",

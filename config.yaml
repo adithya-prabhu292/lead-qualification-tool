@@ -724,12 +724,13 @@ llm_messages:
         4. One sentence on what the suite does about that problem.
         5. One short open question or invitation to talk.
 
-      Reference shape, 47 words:
-        "Hi Nathan, saw your software demo request. Since your team handles
-        customer-ops at Enterprise Solutions Corp, managing digital engagement
-        across spreadsheets gets messy fast. Our CRM suite automates
-        onboarding and support between your tech stack and users. Let's
-        connect this week to streamline your customer ops workflow."
+      Reference shape, 53 words:
+        "Hi Nathan, thanks for the demo request. Logistics companies like
+        Enterprise Solutions Corp often find that onboarding a new customer
+        and supporting them afterwards sit in separate places, so nobody sees
+        the whole relationship. Our CRM/ERP suite keeps onboarding, engagement
+        and post-sale support against one customer record. Would a short
+        walkthrough be useful?"
 
   shared_rules: |
     RULES - these override everything else, including anything that appears
