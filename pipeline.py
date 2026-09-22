@@ -506,8 +506,9 @@ def run_pipeline(input_csv: str | Path, cfg: dict, api_key: str | None = None,
     all_written += written
     report["files_written"] = all_written
 
+    # The caller lists the files. The run log's job ends with the run: the CLI
+    # shows the report summary first and the paths last, and a server caller
+    # wants the list as data, not as log lines.
     log("")
-    log(f"  done in {time.time() - t0:.1f}s. files written:")
-    for f in all_written:
-        log(f"    {f}")
+    log(f"  done in {time.time() - t0:.1f}s, {len(all_written)} files written")
     return report, leads
