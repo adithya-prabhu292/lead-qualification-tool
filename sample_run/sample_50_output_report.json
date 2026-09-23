@@ -2,9 +2,9 @@
   "summary": {
     "source_file": "leads_sample_50.csv",
     "processing_date": "2024-01-20",
-    "generated_at": "2026-09-14T20:43:51",
-    "rubric_version": "1.1-frozen-on-training",
-    "build": "1.1.2",
+    "generated_at": "2026-09-23T14:10:48",
+    "rubric_version": "1.2-frozen-on-training",
+    "build": "1.2.0-dev",
     "total_processed": 50,
     "scored": 50,
     "unscoreable": 0,
@@ -75,8 +75,8 @@
       "LOW": 3
     },
     "messages": {
-      "generated": 22,
-      "failed": 1,
+      "generated": 23,
+      "failed": 0,
       "denominator": "qualified leads (n=23)"
     },
     "capacity_context": {
@@ -992,11 +992,11 @@
           "outcome_reason_text": null,
           "completeness": 1.0,
           "missing_fields": [],
-          "outreach_message": "Hi Mira, thanks for the sales call. Since your team runs customer\u2011ops at Bluecrest Systems, juggling onboarding and support tickets across multiple tools often creates data silos. Our CRM/ERP suite sits between your record system and product, unifying customer records and automating engagement and post\u2011sale support. Would you like to explore how it could simplify your workflow?",
+          "outreach_message": "Hi Mira, thanks for the call. Customer Support Software firms like Bluecrest Systems often find onboarding new users and tracking support tickets live in separate tools, fragmenting the client view. Our CRM/ERP suite brings onboarding, engagement and post\u2011sale support onto one customer record for a full relationship view. Would a quick walkthrough this week be helpful?",
           "message_variant": "v3_generic",
           "message_generated": true,
           "message_fail_reason": null,
-          "message_word_count": 57
+          "message_word_count": 56
         },
         {
           "lead_id": "L016",
@@ -1033,11 +1033,11 @@
           "outcome_reason_text": null,
           "completeness": 1.0,
           "missing_fields": [],
-          "outreach_message": null,
+          "outreach_message": "Hi Nikhil, thanks for the call. Home Services providers like Harborline Union often find onboarding schedules and post\u2011service follow\u2011ups fall out of sync, creating gaps in the customer journey. Our CRM/ERP suite aligns onboarding, engagement and post\u2011sale support on a single record, keeping every service step visible and coordinated. Could a demo this week show how it works for you?",
           "message_variant": "v3_generic",
-          "message_generated": false,
-          "message_fail_reason": "leaked_internal",
-          "message_word_count": null
+          "message_generated": true,
+          "message_fail_reason": null,
+          "message_word_count": 60
         }
       ]
     },
@@ -3410,11 +3410,11 @@
       "outcome_reason_text": null,
       "completeness": 1.0,
       "missing_fields": [],
-      "outreach_message": "Hi Mira, thanks for the sales call. Since your team runs customer\u2011ops at Bluecrest Systems, juggling onboarding and support tickets across multiple tools often creates data silos. Our CRM/ERP suite sits between your record system and product, unifying customer records and automating engagement and post\u2011sale support. Would you like to explore how it could simplify your workflow?",
+      "outreach_message": "Hi Mira, thanks for the call. Customer Support Software firms like Bluecrest Systems often find onboarding new users and tracking support tickets live in separate tools, fragmenting the client view. Our CRM/ERP suite brings onboarding, engagement and post\u2011sale support onto one customer record for a full relationship view. Would a quick walkthrough this week be helpful?",
       "message_variant": "v3_generic",
       "message_generated": true,
       "message_fail_reason": null,
-      "message_word_count": 57
+      "message_word_count": 56
     },
     {
       "lead_id": "L016",
@@ -3451,11 +3451,11 @@
       "outcome_reason_text": null,
       "completeness": 1.0,
       "missing_fields": [],
-      "outreach_message": null,
+      "outreach_message": "Hi Nikhil, thanks for the call. Home Services providers like Harborline Union often find onboarding schedules and post\u2011service follow\u2011ups fall out of sync, creating gaps in the customer journey. Our CRM/ERP suite aligns onboarding, engagement and post\u2011sale support on a single record, keeping every service step visible and coordinated. Could a demo this week show how it works for you?",
       "message_variant": "v3_generic",
-      "message_generated": false,
-      "message_fail_reason": "leaked_internal",
-      "message_word_count": null
+      "message_generated": true,
+      "message_fail_reason": null,
+      "message_word_count": 60
     },
     {
       "lead_id": "L027",
@@ -4861,31 +4861,31 @@
       "source": "Sales call",
       "message_variant": "v3_generic",
       "priority_rank": 23,
-      "message_word_count": 57,
-      "message": "Hi Mira, thanks for the sales call. Since your team runs customer\u2011ops at Bluecrest Systems, juggling onboarding and support tickets across multiple tools often creates data silos. Our CRM/ERP suite sits between your record system and product, unifying customer records and automating engagement and post\u2011sale support. Would you like to explore how it could simplify your workflow?"
+      "message_word_count": 56,
+      "message": "Hi Mira, thanks for the call. Customer Support Software firms like Bluecrest Systems often find onboarding new users and tracking support tickets live in separate tools, fragmenting the client view. Our CRM/ERP suite brings onboarding, engagement and post\u2011sale support onto one customer record for a full relationship view. Would a quick walkthrough this week be helpful?"
     }
   ],
   "sample_note": null,
   "run_diagnostics": {
     "tiering": {
-      "stage": "1 - industry tier normalisation",
+      "stage": "industry tier normalisation",
       "batch_size_key": "llm.batch_size",
       "batch_size": 25,
       "model": "openai/gpt-oss-120b",
       "temperature": 0.0,
       "n_strings_total": 26,
-      "n_from_cache": 0,
-      "n_classified_live": 26,
-      "batches": 2,
+      "n_from_cache": 26,
+      "n_classified_live": 0,
+      "batches": 0,
       "parse_failures": 0,
       "tokens": {
-        "prompt_tokens": 627,
-        "completion_tokens": 1159,
-        "total_tokens": 1786
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0
       }
     },
     "messaging": {
-      "stage": "2 - outreach message generation",
+      "stage": "outreach message generation",
       "batch_size_key": "llm_messages.batch_size",
       "batch_size": 4,
       "model": "openai/gpt-oss-120b",
@@ -4893,74 +4893,64 @@
       "max_tokens": 4500,
       "rates": {
         "first_pass_lead_coverage": {
-          "n": 23,
+          "n": 2,
           "denominator": "leads sent (cached excluded)",
-          "recovered": 22,
-          "pct": 95.7
+          "recovered": 2,
+          "pct": 100.0
         },
         "per_variant_first_pass_coverage": {
-          "v1_value": {
-            "n_sent": 5,
-            "n_recovered": 5,
-            "coverage_pct": 100.0
-          },
-          "v2_engagement": {
-            "n_sent": 16,
-            "n_recovered": 16,
-            "coverage_pct": 100.0
-          },
           "v3_generic": {
             "n_sent": 2,
-            "n_recovered": 1,
-            "coverage_pct": 50.0
+            "n_recovered": 2,
+            "coverage_pct": 100.0
           }
         },
         "first_pass_batch_clean_rate": {
-          "n": 7,
+          "n": 1,
           "denominator": "batches",
-          "clean": 6,
-          "pct": 85.7
+          "clean": 1,
+          "pct": 100.0
         },
         "post_retry_lead_coverage": {
           "n": 23,
           "denominator": "qualified leads",
-          "generated": 22,
-          "pct": 95.7
+          "generated": 23,
+          "pct": 100.0
         },
         "truncation_rate": {
-          "n": 7,
+          "n": 1,
           "denominator": "batches",
           "truncated": 0,
           "pct": 0.0
         },
         "word_count_compliance": {
-          "n": 22,
+          "n": 23,
           "denominator": "messages generated",
           "target": [
             50,
             60
           ],
-          "in_target": 22,
+          "in_target": 23,
           "pct": 100.0,
           "min": 52,
           "median": 59,
           "max": 60
         },
         "tokens": {
-          "prompt_tokens": 5753,
-          "completion_tokens": 14912,
-          "total_tokens": 20665,
-          "denominator": "message stage only, 23 leads sent"
+          "prompt_tokens": 711,
+          "completion_tokens": 2353,
+          "total_tokens": 3064,
+          "denominator": "message stage only, 2 leads sent"
         }
       },
-      "n_cached": 0,
-      "n_sent": 23,
-      "n_failed": 1,
+      "n_cached": 21,
+      "n_sent": 2,
+      "n_failed": 0,
       "lead_id_drift": []
     },
     "combined": {
-      "total_tokens": 22451,
-      "tokens_per_100_leads": 44902,
+      "total_tokens": 3064,
+      "tokens_per_100_leads": 6128,
       "denominator": "both LLM stages, 50 leads processed"
     }
   },

@@ -32,6 +32,17 @@
     "variant": "v2_engagement",
     "word_count": 60
   },
+  "2191a5f45cdf6310a5b0f1e320b9fe994571b45d0bb5ca70363ea12ab3366456": {
+    "company": "Harborline Union",
+    "generated_at": "2026-09-23T08:40:48Z",
+    "lead_id": "L016",
+    "message": "Hi Nikhil, thanks for the call. Home Services providers like Harborline Union often find onboarding schedules and post‑service follow‑ups fall out of sync, creating gaps in the customer journey. Our CRM/ERP suite aligns onboarding, engagement and post‑sale support on a single record, keeping every service step visible and coordinated. Could a demo this week show how it works for you?",
+    "model": "openai/gpt-oss-120b",
+    "source_file": "leads_sample_50.csv",
+    "temperature": 0.7,
+    "variant": "v3_generic",
+    "word_count": 60
+  },
   "22859b2fe2e40675c6818dbe26fd82e87177ebb7e2978c3734ba266ab26660a3": {
     "company": "Quill Foundry",
     "generated_at": "2026-09-14T20:39:34Z",
@@ -207,6 +218,17 @@
     "temperature": 0.7,
     "variant": "v1_value",
     "word_count": 59
+  },
+  "db230a13da5c927f43f1a7a7f6f17034741c3b231f09d7f9c7e2e64afcb6fcd1": {
+    "company": "Bluecrest Systems",
+    "generated_at": "2026-09-23T08:40:48Z",
+    "lead_id": "L020",
+    "message": "Hi Mira, thanks for the call. Customer Support Software firms like Bluecrest Systems often find onboarding new users and tracking support tickets live in separate tools, fragmenting the client view. Our CRM/ERP suite brings onboarding, engagement and post‑sale support onto one customer record for a full relationship view. Would a quick walkthrough this week be helpful?",
+    "model": "openai/gpt-oss-120b",
+    "source_file": "leads_sample_50.csv",
+    "temperature": 0.7,
+    "variant": "v3_generic",
+    "word_count": 56
   },
   "ee984833ecfc130f0890c9856a0de1dcead4478655b2406f1485a17e47d91501": {
     "company": "Inglewood Company",
