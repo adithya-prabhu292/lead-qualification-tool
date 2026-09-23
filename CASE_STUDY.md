@@ -1,6 +1,6 @@
 # Case Study — Lead Qualification Tool
 
-*Describes build 1.1.2. For how the tool works internally, see [ARCHITECTURE.md](ARCHITECTURE.md).*
+*Describes build 1.2.0-dev. For how the tool works internally, see [ARCHITECTURE.md](ARCHITECTURE.md).*
 
 ## The problem
 
@@ -32,7 +32,7 @@ The tool takes a CSV of leads and runs them through a single pipeline:
 
 **Every lead gets a decision.** Today about 60 of 1,200 leads a month receive a considered decision; the rest are never examined. The tool gives every lead a decision with a traceable reason: which factors scored well or badly, and by how much.
 
-**Uncertain leads go to a person, not a guess.** A lead whose fit score sits close to the cutoff, or whose record is incomplete, is routed to REVIEW for a human to decide. Missing data never causes a rejection.
+**Uncertain leads go to a person, not a guess.** A lead whose fit score sits close to the cutoff, or whose record is incomplete, is routed to REVIEW for a human to decide. That covers values that are missing and values that are present but unrecognised, such as a source outside the expected list or an industry the tool could not classify. Unusable data never causes a rejection.
 
 **A queue, not a shortlist.** At the calibrated cutoff, qualified volume is several times the ~60 leads the team works today. A plain yes/no list would still leave reps choosing by hand, so qualified leads are ordered by a priority score that blends the fit score with an urgency score based on how recently the lead engaged and how it arrived. Each lead's queue position tells the team who to contact first.
 
@@ -46,14 +46,14 @@ The tool takes a CSV of leads and runs them through a single pipeline:
 - **Batching.** Batched model calls were a requirement from the outset: the model is never called once per lead.
 - **No ground truth.** Without conversion outcomes, results can be checked only for internal consistency, not against what actually happened.
 - **Messy input.** The data contains missing values, "Unknown" placeholders, company sizes stored as decimals, and interaction dates about 960 days old. The dataset's accompanying notes did not match the data itself, so input is validated against the data, not its documentation.
-- **Notebook runtime.** The tool runs as a notebook session in Google Colab.
+- **Command-line runtime.** The tool is a command-line program, run against a CSV file.
 
 ## What was achieved
 
-Build 1.1.2 delivers:
+Build 1.2.0-dev delivers:
 
 - A four-factor rubric with explicit weights, and traceable per-lead reasoning that shows how much each factor contributed to the fit score.
-- Human-review routing for borderline and incomplete leads.
+- Human-review routing for borderline leads, and for leads whose data is missing or unrecognised.
 - Batched, paced model calls with bounded retries, so a failing call is retried a fixed number of times and then reported, never retried indefinitely.
 - Model outputs matched to leads by ID, never by position, so a reordered or partial reply cannot attach one lead's message to another lead.
 - Three message variants — value-led, engagement-led and balanced — chosen by the rubric, not by the model.
