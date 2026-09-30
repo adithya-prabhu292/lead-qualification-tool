@@ -571,9 +571,15 @@ def run_pipeline(input_csv: str | Path, cfg: dict, api_key: str | None = None,
         )
         paths["message_report"].write_text(
             json.dumps(msg_report, indent=2, default=str), encoding="utf-8")
-        log(f"  messages: generated {msg_report['n_generated']} | "
-            f"cached {msg_report['n_cached']} | failed {msg_report['n_failed']} "
-            f"of n={msg_report['n_leads']}")
+        # n_generated counts every lead that ended with a message, cache hits
+        # included, so it is not a count of live calls. Reporting it as
+        # "generated" made a fully cached run read as though it had written
+        # every message from scratch. The split is stated instead.
+        from_cache = msg_report["n_cached"]
+        live = msg_report["n_generated"] - from_cache
+        log(f"  messages: {msg_report['n_generated']} of {msg_report['n_leads']} "
+            f"written | {from_cache} from cache, {live} live | "
+            f"{msg_report['n_failed']} failed")
 
     # --- report ------------------------------------------------------------
     report = RB.build_report(leads, cfg, source_file=path.name,
