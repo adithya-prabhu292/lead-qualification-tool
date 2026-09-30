@@ -20,10 +20,11 @@ Revision
 --------
 1.1.1  Five optional messaging fields added to ScoredLead: message,
        message_generated, message_variant, message_fail_reason,
-       message_word_count. Additive only - no scoring function reads or writes
-       them, and to_frame() does not emit them, so the scoring path and the
-       scored CSV are unchanged byte-for-byte. A file scored without running
-       the messaging stage still produces valid records.
+       message_word_count. Additive only - no scoring function reads or
+       writes them, and leads_to_dataframe() does not emit them, so the
+       scoring path and the scored CSV are unchanged byte-for-byte. A file
+       scored without running the messaging stage still produces valid
+       records.
 """
 
 from __future__ import annotations
@@ -74,7 +75,7 @@ def is_missing(value: Any, sentinels: set[str]) -> bool:
     return False
 
 
-def clean_str(value: Any, sentinels: set[str]) -> str | None:
+def clean_text(value: Any, sentinels: set[str]) -> str | None:
     return None if is_missing(value, sentinels) else str(value).strip()
 
 
@@ -218,9 +219,10 @@ class ScoredLead:
     reasoning: str = ""
 
     # --- messaging fields --------------------------------------------------
-    # Optional and additive. Nothing in the scoring path reads or writes these,
-    # and to_frame() does not emit them, so scoring a file without running the
-    # message stage still produces valid records and an unchanged CSV.
+    # Optional and additive. Nothing in the scoring path reads or writes
+    # these, and leads_to_dataframe() does not emit them, so scoring a file
+    # without running the message stage still produces valid records and an
+    # unchanged CSV.
     message: str | None = None
     message_generated: bool = False
     message_variant: str | None = None
@@ -270,6 +272,18 @@ def resolve_processing_date(df: pd.DataFrame, cfg: dict) -> date:
     return parsed.max().date()
 
 
+# Scoring fields, and the factor each one feeds. A value that is present but
+# whose factor could not be scored is as unusable as a blank one, so score_lead
+# flags both through missing_fields. `name` and `company` are not here: they
+# feed no factor, and are flagged only when blank.
+UNSCOREABLE_FIELDS = {
+    "source": "source",
+    "industry": "industry",
+    "company_size": "company_size",
+    "last_interaction_date": "recency",
+}
+
+
 def score_lead(
     row: pd.Series,
     lead_id: str,
@@ -280,11 +294,11 @@ def score_lead(
     sentinels = set(cfg["missing_data"]["sentinel_values"])
     factors = cfg["factors"]
 
-    name = clean_str(row.get("name"), sentinels)
-    company = clean_str(row.get("company"), sentinels)
+    name = clean_text(row.get("name"), sentinels)
+    company = clean_text(row.get("company"), sentinels)
     size = clean_size(row.get("company_size"), sentinels)
-    industry = clean_str(row.get("industry"), sentinels)
-    source = clean_str(row.get("source"), sentinels)
+    industry = clean_text(row.get("industry"), sentinels)
+    source = clean_text(row.get("source"), sentinels)
     last_dt = clean_date(row.get("last_interaction_date"), sentinels)
 
     lead = ScoredLead(
@@ -297,12 +311,11 @@ def score_lead(
         last_interaction_date=last_dt.isoformat() if last_dt else None,
     )
 
-    # --- completeness (drives the review guardrail) ------------------------
+    # --- completeness, pass 1: blank and placeholder values ----------------
+    # Pass 2 is below, once the factor scores exist. completeness is computed
+    # after both, so it counts fields that were usable, not merely present.
     fields = cfg["missing_data"]["completeness_fields"]
-    lead.missing_fields = [
-        c for c in fields if is_missing(row.get(c), sentinels)
-    ]
-    lead.completeness = 1.0 - (len(lead.missing_fields) / len(fields))
+    absent = [c for c in fields if is_missing(row.get(c), sentinels)]
 
     # --- per-factor raw scores --------------------------------------------
     s_src, d_src = score_source(source, factors["source"])
@@ -323,6 +336,21 @@ def score_lead(
         "company_size": d_siz,
         "recency": d_rec,
     }
+
+    # --- completeness, pass 2: present, but nothing could be scored --------
+    # An unrecognised source, an unclassified industry, a size that is not a
+    # readable headcount, a date that will not parse. Each drops its factor,
+    # and without this the lead is decided on the factors that happened to
+    # survive, with nothing recorded to say one was dropped. Flagging it here
+    # routes the lead to a human through the incomplete_record guardrail,
+    # which is what the V1_INCOMPLETE reason text has always claimed.
+    unreadable = [
+        field for field, factor in UNSCOREABLE_FIELDS.items()
+        if field not in absent and lead.factor_scores[factor] is None
+    ]
+    flagged = set(absent) | set(unreadable)
+    lead.missing_fields = [c for c in fields if c in flagged]
+    lead.completeness = 1.0 - (len(lead.missing_fields) / len(fields))
 
     score_w = {k: float(v["score_weight"]) for k, v in factors.items()}
     urg_w = {k: float(v["urgency_weight"]) for k, v in factors.items()}
@@ -376,11 +404,11 @@ def score_lead(
         # visibly sum to the fit score instead of drifting by rounding.
         lead.factor_contributions[k] = round(raw * score_w[k] / den, 2)
 
-    lead.reasoning = build_reasoning(lead, score_w)
+    lead.reasoning = build_reasoning_string(lead, score_w)
     return lead
 
 
-def build_reasoning(lead: ScoredLead, score_w: dict[str, float]) -> str:
+def build_reasoning_string(lead: ScoredLead, score_w: dict[str, float]) -> str:
     parts = []
     for k, raw in lead.factor_scores.items():
         if raw is None:
@@ -441,7 +469,7 @@ def apply_guardrails(lead: ScoredLead, cfg: dict) -> ScoredLead:
 # ---------------------------------------------------------------------------
 # batch + ranking
 # ---------------------------------------------------------------------------
-def _rank_key(lead: ScoredLead):
+def _queue_sort_key(lead: ScoredLead):
     """Full deterministic tie-break chain. Without it, two runs over the same
     file can emit different ranks and the report stops being
     reproducible."""
@@ -454,7 +482,7 @@ def _rank_key(lead: ScoredLead):
     )
 
 
-def score_dataframe(
+def score_all_leads(
     df: pd.DataFrame, cfg: dict, tier_map: dict[str, str]
 ) -> tuple[list[ScoredLead], date]:
     processing_date = resolve_processing_date(df, cfg)
@@ -469,13 +497,13 @@ def score_dataframe(
         for i, (_, row) in enumerate(df.iterrows())
     ]
 
-    for rank, lead in enumerate(sorted(leads, key=_rank_key), start=1):
+    for rank, lead in enumerate(sorted(leads, key=_queue_sort_key), start=1):
         lead.priority_rank = rank
 
     return leads, processing_date
 
 
-def to_frame(leads: list[ScoredLead]) -> pd.DataFrame:
+def leads_to_dataframe(leads: list[ScoredLead]) -> pd.DataFrame:
     rows = []
     for l in leads:
         row = {

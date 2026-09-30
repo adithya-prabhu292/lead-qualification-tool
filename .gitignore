@@ -1,0 +1,9 @@
+# Run outputs. Every file the CLI writes lands in --out-dir, default output/.
+output/
+
+# Local virtual environment (see README).
+.venv/
+
+# Python bytecode.
+__pycache__/
+*.pyc
